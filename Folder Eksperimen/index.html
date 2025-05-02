@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebAssembly Image Processing</title>
+</head>
+<body>
+    <h1>Pengolahan Gambar dengan WebAssembly</h1>
+    <canvas id="canvas"></canvas>
+    <button onclick="konversi()">Konversi ke Grayscale</button>
+
+    <script>
+        let instance;
+        let memory;
+    
+        async function loadWasm() {
+            const response = await fetch('grayscale.wasm');
+            const bytes = await response.arrayBuffer();
+            const wasmModule = await WebAssembly.instantiate(bytes, {
+                env: {
+                    memory: new WebAssembly.Memory({ initial: 256 }),
+                    abort: () => console.log("Abort called!"),
+                }
+            });
+    
+            instance = wasmModule.instance;
+            memory = instance.exports.memory;
+        }
+    
+        async function konversi() {
+            if (!instance) await loadWasm();
+    
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+    
+            const img = new Image();
+            img.src = 'your-image.jpg';
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+    
+                const ptr = instance.exports.malloc(data.length);
+                const wasmMemory = new Uint8Array(memory.buffer, ptr, data.length);
+                wasmMemory.set(data);
+    
+                instance.exports.grayscale(ptr, data.length);
+    
+                data.set(wasmMemory.subarray(0, data.length));
+                ctx.putImageData(imageData, 0, 0);
+    
+                instance.exports.free(ptr);
+            };
+    
+            img.onerror = () => {
+                console.error("Gambar gagal dimuat");
+            };
+        }
+    
+        loadWasm();
+    </script>a    
+</body>
+</html>
